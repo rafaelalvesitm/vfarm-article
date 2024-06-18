@@ -1,0 +1,130 @@
+# Warning: Do not use this file in production environments. It is intended for development purposes only.
+# This file uses FIWARE components to provide a basic IoT platform. 
+# The platform includes the Orion Context Broker, IoT Agent JSON, Eclipse Mosquitto, MongoDB, MySQL, and Cygnus.
+
+services:
+
+# Orion Context Broker is a FIWARE component which processes context information and manages context entities
+  orion:
+    image: quay.io/fiware/orion:latest
+    hostname: orion
+    container_name: fiware-orion
+    depends_on:
+      - mongo-db
+    expose:
+      - "1026"
+    ports:
+      - "1026:1026"
+    command: -dbhost mongo-db -logLevel DEBUG -noCache 
+    healthcheck:
+      test: curl --fail -s http://orion:1026/version || exit 1
+      interval: 5s
+
+  # IoT Agent JSON is a FIWARE component which acts as an IoT Agent for JSON and Ultralight devices, either by HTTP or MQTT
+  iot-agent-json:
+    image: fiware/iotagent-json:latest
+    hostname: iot-agent-json
+    container_name: fiware-iot-agent-json
+    depends_on:
+      - mongo-db
+    expose:
+      - "4041"
+      - "7896"
+    ports:
+      - "4041:4041"
+      - "7896:7896"
+    environment:
+      - "IOTA_CB_HOST=orion"
+      - "IOTA_CB_PORT=1026"
+      - "IOTA_NORTH_PORT=4041"
+      - "IOTA_REGISTRY_TYPE=mongodb"
+      - "IOTA_TIMESTAMP=true" 
+      - "IOTA_CB_NGSI_VERSION=v2" 
+      - "IOTA_MONGO_HOST=mongo-db"
+      - "IOTA_MONGO_PORT=27017"
+      - "IOTA_MONGO_DB=iotagentjson"
+      - "IOTA_HTTP_PORT=7896"
+      - "IOTA_PROVIDER_URL=http://iot-agent-json:4041"
+      - "IOTA_MQTT_HOST=mosquitto"
+      - "IOTA_MQTT_PORT=1883"
+      - "IOTA_host_TRANSPORT=MQTT"
+    healthcheck:
+      interval: 5s
+
+  # Eclipse Mosquitto is an open source message broker that implements the MQTT protocol
+  mosquitto:
+    image: eclipse-mosquitto:latest
+    hostname: mosquitto
+    container_name: mosquitto
+    networks:
+      - default
+    expose:
+      - "1883"
+    ports:
+      - "1883:1883"
+    volumes:
+      - ./plataformaProjeto/mosquitto/mosquitto.conf:/mosquitto/config/mosquitto.conf
+
+  # MongoDB is a NoSQL database used to store context data from the Orion Context Broker and IoT Agents
+  mongo-db:
+    image: mongo:4.4 
+    hostname: mongo-db 
+    container_name: mongo-db
+    expose:
+      - "27017" 
+    ports:
+      - "27017:27017" 
+    volumes:
+      - mongo-db:/data/db
+    healthcheck:
+      test: ["CMD","mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+
+  # MySQL is a SQL database used to store historical context data from the Orion Context Broker
+  mysql-db:
+    image: mysql:5.7
+    hostname: mysql-db-projeto
+    container_name: mysql-db-projeto
+    expose:
+      - "3306"
+    ports:
+      - "3306:3306" # localhost:3306
+    environment:
+      - "MYSQL_ROOT_PASSWORD=123"
+      - "MYSQL_ROOT_HOST=%"
+    volumes:
+      - mysql-db-projeto:/var/lib/mysql
+
+  # Cygnus is a FIWARE component which subscribes to context data from the Orion Context Broker and persists it into a MySQL database
+  cygnus:
+    image: fiware/cygnus-ngsi:latest
+    hostname: cygnus
+    container_name: fiware-cygnus
+    depends_on:
+      - mysql-db
+    expose:
+      - "5050"
+      - "5080"
+    ports:
+      - "5050:5050" 
+      - "5080:5080" 
+    environment:
+      - "CYGNUS_MYSQL_SERVICE_PORT=5050" #
+      - "CYGNUS_MYSQL_HOST=mysql-db" 
+      - "CYGNUS_MYSQL_PORT=3306" 
+      - "CYGNUS_MYSQL_USER=root" 
+      - "CYGNUS_MYSQL_PASS=123" 
+      - "CYGNUS_SERVICE_PORT=5050"
+      - "CYGNUS_API_PORT=5080" 
+      - "CYGNUS_LOG_LEVEL=DEBUG"
+    healthcheck:
+      test: curl --fail -s http://localhost:5080/v1/version || exit 1
+
+# --- Volumes ---
+# Volumes são usados para persistir dados gerados pelos contêineres.
+volumes: 
+  mongo-db: 
+  mysql-db: 
